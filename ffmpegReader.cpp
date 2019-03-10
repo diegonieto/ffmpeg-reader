@@ -24,23 +24,92 @@
 
 #include <iostream>
 
+#define INBUF_SIZE 4096
+
+static void pgm_save(unsigned char *buf, int wrap, int xsize, int ysize,
+                     char *filename)
+{
+    FILE *f;
+    int i;
+    f = fopen(filename,"w");
+    fprintf(f, "P5\n%d %d\n%d\n", xsize, ysize, 255);
+    for (i = 0; i < ysize; i++)
+        fwrite(buf + i * wrap, 1, xsize, f);
+    fclose(f);
+}
+
+/**
+ * Using decode example from ffmpeg
+ */
+void FfmpegReader::decode_and_save_frame(AVCodecContext *dec_ctx, AVFrame *frame, AVPacket *pkt,
+                   const char *filename)
+{
+    char buf[1024];
+    int ret;
+    ret = avcodec_send_packet(dec_ctx, pkt);
+    if (ret < 0) {
+        fprintf(stderr, "Error sending a packet for decoding\n");
+        exit(1);
+    }
+    while (ret >= 0) {
+        ret = avcodec_receive_frame(dec_ctx, frame);
+        if (ret == AVERROR(EAGAIN) || ret == AVERROR_EOF) {
+            return;
+        }
+        else if (ret < 0) {
+            fprintf(stderr, "Error during decoding\n");
+            exit(1);
+        }
+        printf("saving frame %3d\n", dec_ctx->frame_number);
+        fflush(stdout);
+        /* the picture is allocated by the decoder. no need to
+           free it */
+        snprintf(buf, sizeof(buf), "%s-%d", filename, dec_ctx->frame_number);
+        pgm_save(frame->data[0], frame->linesize[0],
+                 frame->width, frame->height, buf);
+    }
+}
+
 FfmpegReader::FfmpegReader() :
-    _ctx(NULL)
+    _ctx(NULL),
+	_fRead(0)
 {
     av_register_all();
     avformat_network_init();
+    _packetsFile.open ("packets", ios::binary);
 }
 
 int FfmpegReader::open(const string &filename)
 {
     int error = avformat_open_input(&_ctx, filename.c_str(), NULL, NULL);
+    avformat_find_stream_info(_ctx, 0);
+    prepareForDecode(); // Needed when trying to generate images
     return 0;
 }
 
 int FfmpegReader::close()
 {
     avformat_close_input(&_ctx);
+    _packetsFile.close();
     return 0;
+}
+
+void FfmpegReader::prepareForDecode()
+{
+    // The de decoder associated to the stream
+    _codec = avcodec_find_decoder(_ctx->streams[0]->codecpar->codec_id);
+    if (!_codec) {
+        fprintf(stderr, "Codec not found\n");
+        exit(1);
+    }
+    _codecContext = avcodec_alloc_context3(_codec);
+    _frame = av_frame_alloc();
+
+    /* open it */
+    if (avcodec_open2(_codecContext, _codec, NULL) < 0) {
+        fprintf(stderr, "Could not open codec\n");
+        exit(1);
+    }
 }
 
 int FfmpegReader::readFrame(AVPacket *packet)
@@ -52,13 +121,13 @@ int FfmpegReader::readAll()
 {
     AVPacket packet;
     int error = readFrame(&packet);
-    long long int fReaded = 1;
     while (error >= 0 && error != AVERROR_EOF)
     {
         processFrame(packet);
+
         av_packet_unref(&packet);
         error = readFrame(&packet);
-        fReaded++;
+        _fRead++;
     }
     av_packet_unref(&packet);
 }

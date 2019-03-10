@@ -13,6 +13,7 @@ extern "C"
 }
 
 #include <string>
+#include <fstream>
 
 using namespace std;
 
@@ -32,9 +33,19 @@ class FfmpegReader {
 
         virtual int close();
 
+        virtual void prepareForDecode();
+
+        virtual void decode_and_save_frame(AVCodecContext *dec_ctx, AVFrame *frame, AVPacket *pkt,
+                const char *filename);
 
     protected:
         AVFormatContext *_ctx;
+        AVCodec *_codec;
+        AVCodecContext *_codecContext= NULL;
+        AVFrame *_frame;  // To store the picture
+        long long int _fRead;
+
+        ofstream _packetsFile;
 };
 
 
