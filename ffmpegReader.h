@@ -44,6 +44,7 @@ class FfmpegReader {
         AVCodecContext *_codecContext= NULL;
         AVFrame *_frame;  // To store the picture
         long long int _fRead;
+        long long int _totalReadSize;
 
         ofstream _packetsFile;
 };

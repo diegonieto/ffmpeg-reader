@@ -81,8 +81,12 @@ FfmpegReader::FfmpegReader() :
 
 int FfmpegReader::open(const string &filename)
 {
+    _totalReadSize = 0;
     int error = avformat_open_input(&_ctx, filename.c_str(), NULL, NULL);
-    avformat_find_stream_info(_ctx, 0);
+    if (_ctx)  {
+        //_ctx->flags |= AVFMT_FLAG_KEEP_SIDE_DATA;
+    }
+    avformat_find_stream_info(_ctx, NULL);
     prepareForDecode(); // Needed when trying to generate images
     return 0;
 }
@@ -91,6 +95,7 @@ int FfmpegReader::close()
 {
     avformat_close_input(&_ctx);
     _packetsFile.close();
+    std::cout << " Total frames read: " << _fRead << " Total size: " << _totalReadSize << std::endl;
     return 0;
 }
 
